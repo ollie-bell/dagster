@@ -21,7 +21,7 @@ from dagster._core.errors import DagsterInvalidDefinitionError
 from dagster._core.storage.tags import KIND_PREFIX
 from dagster._serdes.serdes import whitelist_for_serdes
 from dagster._utils.internal_init import IHasInternalInit
-from dagster._utils.tags import validate_tags_strict
+from dagster._utils.tags import normalize_tags
 
 if TYPE_CHECKING:
     from dagster._core.definitions.asset_dep import AssetDep, CoercibleToAssetDep
@@ -179,7 +179,7 @@ class AssetSpec(
                 AutomationCondition,
             ),
             owners=owners,
-            tags=validate_tags_strict(tags) or {},
+            tags=normalize_tags(tags or {}, strict=True),
             partitions_def=check.opt_inst_param(
                 partitions_def, "partitions_def", PartitionsDefinition
             ),
