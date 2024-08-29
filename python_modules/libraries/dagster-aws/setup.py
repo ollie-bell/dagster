@@ -37,6 +37,7 @@ setup(
     python_requires=">=3.8,<3.13",
     install_requires=[
         "boto3",
+        "boto3-stubs-lite[ecs,glue,emr,emr-serverless]",
         f"dagster{pin}",
         "packaging",
         "requests",
@@ -45,7 +46,7 @@ setup(
         "redshift": ["psycopg2-binary"],
         "pyspark": ["dagster-pyspark"],
         "stubs": [
-            "boto3-stubs-lite[ecs,glue,emr-serverless]",
+            "boto3-stubs-lite[ecs,glue,emr,emr-serverless]",
         ],
         "test": [
             "botocore!=1.32.1",
