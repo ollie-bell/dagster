@@ -85,11 +85,13 @@ def execute_run_command(input_json):
 
 
 def _should_start_metrics_thread(dagster_run: DagsterRun) -> bool:
-    return get_boolean_tag_value(dagster_run.tags.get("dagster/run_metrics"))
+    return get_boolean_tag_value(
+        dagster_run.tags.get("dagster/run_metrics")
+    ) or get_boolean_tag_value(dagster_run.tags.get(".dagster/run_metrics"))
 
 
 def _enable_python_runtime_metrics(dagster_run: DagsterRun) -> bool:
-    return get_boolean_tag_value(dagster_run.tags.get("dagster/python_runtime_metrics"))
+    return get_boolean_tag_value(dagster_run.tags.get(".dagster/python_runtime_metrics"))
 
 
 def _metrics_polling_interval(
@@ -98,7 +100,7 @@ def _metrics_polling_interval(
     try:
         return float(
             dagster_run.tags.get(
-                "dagster/run_metrics_polling_interval_seconds",
+                ".dagster/run_metrics_polling_interval_seconds",
                 DEFAULT_RUN_METRICS_POLL_INTERVAL_SECONDS,
             )
         )
