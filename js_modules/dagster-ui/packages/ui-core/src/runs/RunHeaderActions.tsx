@@ -35,7 +35,7 @@ type VisibleDialog =
 
 export const RunHeaderActions = ({run, isJob}: {run: RunFragment; isJob: boolean}) => {
   const {runConfigYaml} = run;
-  const runMetricsEnabled = run.tags.some((t) => t.key === DagsterTag.RunMetrics);
+  const runMetricsEnabled = run.hasRunMetricsEnabled;
 
   const [visibleDialog, setVisibleDialog] = useState<VisibleDialog>(null);
 

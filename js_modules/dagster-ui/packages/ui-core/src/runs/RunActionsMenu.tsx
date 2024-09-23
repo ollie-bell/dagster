@@ -91,8 +91,7 @@ export const RunActionsMenu = React.memo(({run, onAddTag}: Props) => {
   const pipelineRun =
     data?.pipelineRunOrError?.__typename === 'Run' ? data?.pipelineRunOrError : null;
   const runConfigYaml = pipelineRun?.runConfigYaml;
-  const runMetricsEnabled = run.tags.some((t) => t.key === DagsterTag.RunMetrics);
-
+  const runMetricsEnabled = run.hasRunMetricsEnabled;
   const repoMatch = useRepositoryForRunWithParentSnapshot(pipelineRun);
   const jobError = useJobAvailabilityErrorForRun({
     ...run,
