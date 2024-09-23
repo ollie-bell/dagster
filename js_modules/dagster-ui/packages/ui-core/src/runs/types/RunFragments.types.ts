@@ -10,6 +10,7 @@ export type RunFragment = {
   hasReExecutePermission: boolean;
   hasTerminatePermission: boolean;
   hasDeletePermission: boolean;
+  hasRunMetricsEnabled: boolean;
   status: Types.RunStatus;
   mode: string;
   rootRunId: string | null;
