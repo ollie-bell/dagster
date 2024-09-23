@@ -515,6 +515,7 @@ export const RUN_ACTIONS_MENU_RUN_FRAGMENT = gql`
       repositoryName
       repositoryLocationName
     }
+    hasRunMetricsEnabled
   }
 `;
 
@@ -534,6 +535,7 @@ export const PIPELINE_ENVIRONMENT_QUERY = gql`
           repositoryName
           repositoryLocationName
         }
+        hasRunMetricsEnabled
       }
     }
   }

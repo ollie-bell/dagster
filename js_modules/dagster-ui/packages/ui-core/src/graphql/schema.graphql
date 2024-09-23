@@ -1431,6 +1431,7 @@ type Run implements PipelineRun & RunsFeedEntry {
   hasConcurrencyKeySlots: Boolean!
   rootConcurrencyKeys: [String!]
   hasUnconstrainedRootNodes: Boolean!
+  hasRunMetricsEnabled: Boolean!
 }
 
 interface RunsFeedEntry {

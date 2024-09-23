@@ -77,6 +77,7 @@ export type RunsFeedRootQuery = {
               status: Types.RunStatus;
               pipelineName: string;
               pipelineSnapshotId: string | null;
+              hasRunMetricsEnabled: boolean;
               repositoryOrigin: {
                 __typename: 'RepositoryOrigin';
                 repositoryName: string;
@@ -95,4 +96,4 @@ export type RunsFeedRootQuery = {
       };
 };
 
-export const RunsFeedRootQueryVersion = '3dc4ec68d0d42dff05c4d66bbe5490b2251268c8b68abe84de6e48d64365fb75';
+export const RunsFeedRootQueryVersion = '30be75818a3d69559ee1972c5f9a48af59fe14336ea0be3c7e8f44cdc66ecc68';

@@ -4416,6 +4416,7 @@ export type Run = PipelineRun &
     hasConcurrencyKeySlots: Scalars['Boolean']['output'];
     hasDeletePermission: Scalars['Boolean']['output'];
     hasReExecutePermission: Scalars['Boolean']['output'];
+    hasRunMetricsEnabled: Scalars['Boolean']['output'];
     hasTerminatePermission: Scalars['Boolean']['output'];
     hasUnconstrainedRootNodes: Scalars['Boolean']['output'];
     id: Scalars['ID']['output'];
@@ -12881,6 +12882,10 @@ export const buildRun = (
       overrides && overrides.hasOwnProperty('hasReExecutePermission')
         ? overrides.hasReExecutePermission!
         : true,
+    hasRunMetricsEnabled:
+      overrides && overrides.hasOwnProperty('hasRunMetricsEnabled')
+        ? overrides.hasRunMetricsEnabled!
+        : false,
     hasTerminatePermission:
       overrides && overrides.hasOwnProperty('hasTerminatePermission')
         ? overrides.hasTerminatePermission!
