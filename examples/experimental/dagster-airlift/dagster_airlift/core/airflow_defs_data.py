@@ -154,7 +154,7 @@ class AirflowDefinitionsData:
     def task_ids_in_dag(self, dag_id: str) -> AbstractSet[str]:
         return set(self.serialized_data.dag_datas[dag_id].task_handle_data.keys())
 
-    def migration_state_for_task(self, dag_id: str, task_id: str) -> Optional[bool]:
+    def proxied_state_for_task(self, dag_id: str, task_id: str) -> Optional[bool]:
         return self.serialized_data.dag_datas[dag_id].task_handle_data[task_id].proxied_state
 
     def asset_keys_in_task(self, dag_id: str, task_id: str) -> AbstractSet[AssetKey]:

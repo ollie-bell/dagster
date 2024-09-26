@@ -23,7 +23,7 @@ from dagster_airlift.core.serialization.serialized_data import (
     TaskInfo,
 )
 from dagster_airlift.core.utils import spec_iterator
-from dagster_airlift.migration_state import AirflowProxiedState
+from dagster_airlift.proxied_state import AirflowProxiedState
 
 
 @record
