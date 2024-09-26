@@ -47,6 +47,7 @@ from dagster._core.definitions.selector import (
     PartitionRangeSelector,
     PartitionsByAssetSelector,
     PartitionsSelector,
+    RepositorySelector,
 )
 from dagster._core.errors import DagsterInvariantViolationError
 from dagster._core.execution.asset_backfill import (
@@ -263,7 +264,7 @@ def _single_backfill_iteration(
         assert asset_keys is not None
 
         assets = assets_by_repo_name[
-            asset_graph.get_repository_handle(asset_keys[0]).repository_name
+            asset_graph.get_repository_selector(asset_keys[0]).repository_name
         ]
 
         do_run(
@@ -667,12 +668,12 @@ def run_backfill_to_completion(
             )
 
             assert all(
-                asset_graph.get_repository_handle(asset_keys[0])
-                == asset_graph.get_repository_handle(asset_key)
+                asset_graph.get_repository_selector(asset_keys[0])
+                == asset_graph.get_repository_selector(asset_key)
                 for asset_key in asset_keys
             )
             assets = assets_by_repo_name[
-                asset_graph.get_repository_handle(asset_keys[0]).repository_name
+                asset_graph.get_repository_selector(asset_keys[0]).repository_name
             ]
 
             do_run(
@@ -736,11 +737,16 @@ def _requested_asset_partitions_in_run_request(
 def remote_asset_graph_from_assets_by_repo_name(
     assets_by_repo_name: Mapping[str, Sequence[AssetsDefinition]],
 ) -> RemoteAssetGraph:
+<<<<<<< HEAD
     from_repository_handles_and_asset_node_snaps = []
+=======
+    from_repository_selectors_and_asset_node_snaps = []
+>>>>>>> 448356cec2 ([RemoteAssetNode] move from RepositoryHandle to RepositorySelector)
 
     for repo_name, assets in assets_by_repo_name.items():
         repo = Definitions(assets=assets).get_repository_def()
 
+<<<<<<< HEAD
         asset_node_snaps = asset_node_snaps_from_repo(repo)
         repo_handle = MagicMock(repository_name=repo_name)
         from_repository_handles_and_asset_node_snaps.extend(
@@ -749,6 +755,16 @@ def remote_asset_graph_from_assets_by_repo_name(
 
     return RemoteAssetGraph.from_repository_handles_and_asset_node_snaps(
         from_repository_handles_and_asset_node_snaps, repo_handle_asset_checks=[]
+=======
+        external_asset_nodes = external_asset_nodes_from_defs(repo.get_all_jobs(), repo.asset_graph)
+        selector = RepositorySelector(location_name="test", repository_name=repo.name)
+        from_repository_selectors_and_asset_node_snaps.extend(
+            [(selector, asset_node) for asset_node in external_asset_nodes]
+        )
+
+    return RemoteAssetGraph.from_repository_selectors_and_asset_node_snaps(
+        from_repository_selectors_and_asset_node_snaps, []
+>>>>>>> 448356cec2 ([RemoteAssetNode] move from RepositoryHandle to RepositorySelector)
     )
 
 

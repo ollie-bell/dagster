@@ -173,16 +173,16 @@ def _make_context(instance: DagsterInstance, defs_attrs):
     )
 
 
-def test_get_repository_handle(instance):
+def test_get_repository_selector(instance):
     asset_graph = _make_context(instance, ["defs1", "defs2"]).asset_graph
 
     assert asset_graph.get_materialization_job_names(asset1.key) == ["__ASSET_JOB"]
-    repo_handle1 = asset_graph.get_repository_handle(asset1.key)
+    repo_handle1 = asset_graph.get_repository_selector(asset1.key)
     assert repo_handle1.repository_name == "__repository__"
     assert repo_handle1.repository_python_origin.code_pointer.fn_name == "defs1"
 
     assert asset_graph.get_materialization_job_names(asset1.key) == ["__ASSET_JOB"]
-    repo_handle2 = asset_graph.get_repository_handle(asset2.key)
+    repo_handle2 = asset_graph.get_repository_selector(asset2.key)
     assert repo_handle2.repository_name == "__repository__"
     assert repo_handle2.repository_python_origin.code_pointer.fn_name == "defs2"
 
@@ -194,14 +194,14 @@ def test_cross_repo_dep_with_source_asset(instance):
     assert asset_graph.get(AssetKey("downstream")).parent_keys == {AssetKey("asset1")}
     assert asset_graph.get(AssetKey("asset1")).child_keys == {AssetKey("downstream")}
     assert (
-        asset_graph.get_repository_handle(
+        asset_graph.get_repository_selector(
             AssetKey("asset1")
         ).repository_python_origin.code_pointer.fn_name
         == "defs1"
     )
     assert asset_graph.get_materialization_job_names(AssetKey("asset1")) == ["__ASSET_JOB"]
     assert (
-        asset_graph.get_repository_handle(
+        asset_graph.get_repository_selector(
             AssetKey("downstream")
         ).repository_python_origin.code_pointer.fn_name
         == "downstream_defs"
@@ -215,14 +215,14 @@ def test_cross_repo_dep_no_source_asset(instance):
     assert asset_graph.get(AssetKey("downstream_non_arg_dep")).parent_keys == {AssetKey("asset1")}
     assert asset_graph.get(AssetKey("asset1")).child_keys == {AssetKey("downstream_non_arg_dep")}
     assert (
-        asset_graph.get_repository_handle(
+        asset_graph.get_repository_selector(
             AssetKey("asset1")
         ).repository_python_origin.code_pointer.fn_name
         == "defs1"
     )
     assert asset_graph.get_materialization_job_names(AssetKey("asset1")) == ["__ASSET_JOB"]
     assert (
-        asset_graph.get_repository_handle(
+        asset_graph.get_repository_selector(
             AssetKey("downstream_non_arg_dep")
         ).repository_python_origin.code_pointer.fn_name
         == "downstream_defs_no_source"

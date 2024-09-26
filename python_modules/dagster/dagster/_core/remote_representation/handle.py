@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING, Mapping
 
 import dagster._check as check
-from dagster._core.definitions.selector import JobSubsetSelector
+from dagster._core.definitions.selector import JobSubsetSelector, RepositorySelector
 from dagster._core.origin import RepositoryPythonOrigin
 from dagster._core.remote_representation.origin import CodeLocationOrigin, RemoteRepositoryOrigin
 from dagster._record import IHaveNew, record, record_custom
@@ -41,6 +41,12 @@ class RepositoryHandle(IHaveNew):
 
     def get_python_origin(self) -> RepositoryPythonOrigin:
         return self.repository_python_origin
+
+    def to_selector(self) -> RepositorySelector:
+        return RepositorySelector(
+            location_name=self.location_name,
+            repository_name=self.repository_name,
+        )
 
 
 @record_custom
