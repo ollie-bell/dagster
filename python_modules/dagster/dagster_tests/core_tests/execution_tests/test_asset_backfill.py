@@ -757,8 +757,13 @@ def remote_asset_graph_from_assets_by_repo_name(
         from_repository_handles_and_asset_node_snaps, repo_handle_asset_checks=[]
 =======
         external_asset_nodes = external_asset_nodes_from_defs(repo.get_all_jobs(), repo.asset_graph)
+<<<<<<< HEAD
         selector = RepositorySelector(location_name="test", repository_name=repo.name)
         from_repository_selectors_and_asset_node_snaps.extend(
+=======
+        selector = RepositorySelector(location_name="test", repository_name=repo_name)
+        from_repository_selectors_and_external_asset_nodes.extend(
+>>>>>>> 6e5cb3c69c (serializable RemoteAssetNode)
             [(selector, asset_node) for asset_node in external_asset_nodes]
         )
 

@@ -43,6 +43,7 @@ from dagster._core.remote_representation.external_data import (
     asset_node_snaps_from_repo,
 )
 from dagster._core.test_utils import freeze_time, instance_for_test
+from dagster._serdes import deserialize_value, serialize_value
 from dagster._time import create_datetime, get_current_datetime
 
 
@@ -900,3 +901,16 @@ def test_cross_code_location_partition_mapping() -> None:
         asset_graph.get_partition_mapping(key=b.key, parent_asset_key=a.key),
         TimeWindowPartitionMapping,
     )
+
+
+def test_serdes() -> None:
+    @asset
+    def a(): ...
+
+    nodes = external_asset_nodes_from_defs([], AssetGraph.from_assets([a]))
+    selector = RepositorySelector(location_name="test", repository_name="repo")
+    asset_graph = RemoteAssetGraph.from_repository_selectors_and_external_asset_nodes(
+        [(selector, asset_node) for asset_node in nodes], []
+    )
+    for node in asset_graph.asset_nodes:
+        assert node == deserialize_value(serialize_value(node))

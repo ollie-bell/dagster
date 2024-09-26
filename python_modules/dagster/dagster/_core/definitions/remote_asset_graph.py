@@ -54,7 +54,8 @@ if TYPE_CHECKING:
 class SelectAssetNode:
     selector: RepositorySelector
     asset: Annotated[
-        "AssetNodeSnap", ImportFrom("dagster._core.remote_representation.external_data")
+        "AssetNodeSnap",
+        ImportFrom("dagster._core.remote_representation.external_data"),
     ]
 
 
