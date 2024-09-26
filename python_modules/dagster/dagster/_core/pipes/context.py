@@ -1,5 +1,6 @@
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime
 from queue import Queue
 from typing import TYPE_CHECKING, Any, Iterator, Mapping, Optional, Sequence, Union, cast
 
@@ -269,6 +270,8 @@ class PipesSession:
             indicating the location from which the external process should load context data.
         message_reader_params (PipesParams): Parameters yielded by the message reader, indicating
             the location to which the external process should write messages.
+        created_at (datetime): The time at which the session was created. Useful as cutoff for
+            reading logs.
     """
 
     context_data: PipesContextData
@@ -276,6 +279,7 @@ class PipesSession:
     context_injector_params: PipesParams
     message_reader_params: PipesParams
     context: OpExecutionContext
+    created_at: datetime = field(default_factory=datetime.now)
 
     @public
     def get_bootstrap_env_vars(self) -> Mapping[str, str]:

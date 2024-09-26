@@ -7,13 +7,16 @@ import re
 import shutil
 import sys
 import textwrap
+import threading
 import time
 from contextlib import contextmanager
+from datetime import datetime
 from tempfile import NamedTemporaryFile
 from typing import TYPE_CHECKING, Any, Callable, Iterator, Literal, Tuple
 from uuid import uuid4
 
 import boto3
+import mock
 import pytest
 from dagster import AssetsDefinition, asset, materialize, open_pipes_session
 from dagster._core.definitions.asset_check_spec import AssetCheckKey, AssetCheckSpec
@@ -28,9 +31,11 @@ from dagster._core.instance_for_test import instance_for_test
 from dagster._core.pipes.subprocess import PipesSubprocessClient
 from dagster._core.pipes.utils import PipesEnvContextInjector
 from dagster._core.storage.asset_check_execution_record import AssetCheckExecutionRecordStatus
+from dagster_pipes import _make_message
 from moto.server import ThreadedMotoServer  # type: ignore  # (pyright bug)
 
 from dagster_aws.pipes import (
+    PipesCloudWatchLogReader,
     PipesCloudWatchMessageReader,
     PipesECSClient,
     PipesEMRServerlessClient,
@@ -51,6 +56,7 @@ from dagster_aws_tests.pipes_tests.fake_lambda import (
 if TYPE_CHECKING:
     from mypy_boto3_ecs import ECSClient
     from mypy_boto3_emr_serverless import EMRServerlessClient
+    from mypy_boto3_logs import LogsClient
 
 _PYTHON_EXECUTABLE = shutil.which("python") or "python"
 
@@ -396,8 +402,177 @@ def glue_client(moto_server, external_s3_glue_script, s3_client):
 
 
 @pytest.fixture
-def cloudwatch_client(moto_server, external_s3_glue_script, s3_client):
+def cloudwatch_client(moto_server, external_s3_glue_script, s3_client) -> "LogsClient":
     return boto3.client("logs", region_name="us-east-1", endpoint_url=_MOTO_SERVER_URL)
+
+
+def test_cloudwatch_logs_reader(cloudwatch_client: "LogsClient", capsys):
+    reader = PipesCloudWatchLogReader(client=cloudwatch_client)
+
+    is_session_closed = threading.Event()
+
+    log_group = "/pipes/tests"
+    log_stream = "test-cloudwatch-logs-reader"
+
+    assert not reader.can_start(
+        {"log_group": log_group, "log_stream": log_stream}
+    ), "Should not be able to read without the stream existing"
+
+    cloudwatch_client.create_log_group(logGroupName=log_group)
+    cloudwatch_client.create_log_stream(logGroupName=log_group, logStreamName=log_stream)
+
+    cloudwatch_client.put_log_events(
+        logGroupName=log_group,
+        logStreamName=log_stream,
+        logEvents=[{"timestamp": int(datetime.now().timestamp() * 1000), "message": "1"}],
+    )
+
+    assert reader.can_start(
+        {"log_group": log_group, "log_stream": log_stream}
+    ), "Should be able to read after the stream is created"
+
+    reader.start({"log_group": log_group, "log_stream": log_stream}, is_session_closed)
+
+    cloudwatch_client.put_log_events(
+        logGroupName=log_group,
+        logStreamName=log_stream,
+        logEvents=[
+            {
+                "timestamp": int(datetime.now().timestamp() * 1000),
+                "message": "2",
+            }
+        ],
+    )
+
+    cloudwatch_client.put_log_events(
+        logGroupName=log_group,
+        logStreamName=log_stream,
+        logEvents=[
+            {
+                "timestamp": int(datetime.now().timestamp() * 1000),
+                "message": "3",
+            }
+        ],
+    )
+
+    is_session_closed.set()
+
+    reader.stop()
+
+    time.sleep(1)
+
+    assert capsys.readouterr().out == "1\n2\n3\n"
+
+
+def test_cloudwatch_message_reader(cloudwatch_client: "LogsClient", capsys):
+    log_group = "/pipes/tests/messages"
+    messages_log_stream = "test-cloudwatch-messages-reader"
+    logs_log_stream = "test-cloudwatch-messages-reader-stdout"
+
+    reader = PipesCloudWatchMessageReader(client=cloudwatch_client)
+
+    @asset
+    def my_asset(context: AssetExecutionContext):
+        with open_pipes_session(
+            context=context, message_reader=reader, context_injector=PipesEnvContextInjector()
+        ) as session:
+            assert not reader.can_start({})
+
+            cloudwatch_client.create_log_group(logGroupName=log_group)
+            cloudwatch_client.create_log_stream(
+                logGroupName=log_group, logStreamName=messages_log_stream
+            )
+            cloudwatch_client.create_log_stream(
+                logGroupName=log_group, logStreamName=logs_log_stream
+            )
+
+            assert not reader.can_start({})
+
+            new_params = {
+                "log_group": log_group,
+                "log_stream": messages_log_stream,
+            }
+
+            reader.update_params(new_params)
+
+            assert reader.can_start(reader.state["params"])
+
+            reader.can_start = mock.MagicMock(
+                wraps=reader.can_start,
+            )
+
+            def log_event(message: str):
+                cloudwatch_client.put_log_events(
+                    logGroupName=log_group,
+                    logStreamName=messages_log_stream,
+                    logEvents=[
+                        {"timestamp": int(datetime.now().timestamp() * 1000), "message": message}
+                    ],
+                )
+
+            def log_line(message: str):
+                cloudwatch_client.put_log_events(
+                    logGroupName=log_group,
+                    logStreamName=logs_log_stream,
+                    logEvents=[
+                        {"timestamp": int(datetime.now().timestamp() * 1000), "message": message}
+                    ],
+                )
+
+            log_event(json.dumps(_make_message(method="opened", params={})))
+
+            log_event(
+                json.dumps(
+                    _make_message(method="log", params={"message": "Hello!", "level": "INFO"})
+                )
+            )
+
+            log_event(
+                json.dumps(
+                    _make_message(
+                        method="report_asset_materialization",
+                        params={
+                            "asset_key": "my_asset",
+                            "metadata": {"foo": {"raw_value": "bar", "type": "text"}},
+                            "data_version": "alpha",
+                        },
+                    )
+                )
+            )
+
+            log_event(json.dumps(_make_message(method="closed", params={})))
+
+            log_line("Hello 1")
+
+            log_reader = PipesCloudWatchLogReader(
+                client=cloudwatch_client,
+                log_group=log_group,
+                log_stream=logs_log_stream,
+                target_stream=sys.stdout,
+                start_time=int(session.created_at.timestamp() * 1000),
+            )
+            reader.add_log_reader("stderr", log_reader)
+
+            log_line("Hello 2")
+
+            assert log_reader.can_start({})
+
+        return session.get_results()
+
+    result = materialize([my_asset])
+
+    assert result.success
+
+    mats = result.get_asset_materialization_events()
+    assert len(mats) == 1
+    mat = mats[0]
+    assert mat.asset_key == AssetKey(["my_asset"])
+    assert mat.materialization.metadata["foo"].value == "bar"
+    assert mat.materialization.tags[DATA_VERSION_TAG] == "alpha"
+
+    captured = capsys.readouterr()
+    assert "Hello 1" in captured.out
+    assert "Hello 2" in captured.out
 
 
 @pytest.mark.parametrize("pipes_messages_backend", ["s3", "cloudwatch"])
@@ -653,7 +828,7 @@ def ecs_task_definition(ecs_client, external_script_default_components) -> str:
         family=task_definition,
         containerDefinitions=[
             {
-                "name": "test-container",
+                "name": LocalECSMockClient.CONTAINER_NAME,
                 "image": "test-image",
                 "command": [sys.executable, external_script_default_components],
                 "memory": 512,
@@ -694,7 +869,7 @@ def ecs_asset(context: AssetExecutionContext, pipes_ecs_client: PipesECSClient):
             "overrides": {
                 "containerOverrides": [
                     {
-                        "name": "test-container",
+                        "name": LocalECSMockClient.CONTAINER_NAME,
                         "environment": [
                             {
                                 "name": "SLEEP_SECONDS",
