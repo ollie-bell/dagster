@@ -2,8 +2,21 @@ import base64
 import random
 import string
 import sys
+from collections.abc import Sequence
 from contextlib import contextmanager
-from typing import Any, Dict, Generator, Iterator, List, Optional, Sequence, TextIO, TypedDict
+from typing import (
+    IO,
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    Generator,
+    Iterator,
+    List,
+    Mapping,
+    Optional,
+    TextIO,
+    TypedDict,
+)
 
 import boto3
 import dagster._check as check
@@ -13,61 +26,179 @@ from dagster._core.pipes.client import PipesMessageReader, PipesParams
 from dagster._core.pipes.context import PipesMessageHandler
 from dagster._core.pipes.utils import (
     PipesBlobStoreMessageReader,
+    PipesChunkedLogReader,
     PipesLogReader,
     extract_message_or_forward_to_file,
     extract_message_or_forward_to_stdout,
 )
 from dagster_pipes import PipesDefaultMessageWriter
 
+if TYPE_CHECKING:
+    from mypy_boto3_s3 import S3Client
+
+
+def _can_read_from_s3(client: "S3Client", bucket: Optional[str], key: Optional[str]):
+    if not bucket or not key:
+        return False
+    else:
+        try:
+            client.head_object(Bucket=bucket, Key=key)
+            return True
+        except ClientError:
+            return False
+
+
+class PipesS3LogReader(PipesChunkedLogReader):
+    def __init__(
+        self,
+        *,
+        bucket: Optional[str] = None,
+        key: Optional[str] = None,
+        client=None,
+        interval: float = 10,
+        target_stream: Optional[IO[str]] = None,
+    ):
+        self.bucket = bucket
+        self.key = key
+        self.client: "S3Client" = client or boto3.client("s3")
+
+        self.log_position = 0
+
+        super().__init__(interval=interval, target_stream=target_stream or sys.stdout)
+
+    def can_start(self, params: PipesParams) -> bool:
+        return _can_read_from_s3(
+            client=self.client,
+            bucket=params.get("bucket") or self.bucket,
+            key=params.get("key") or self.key,
+        )
+
+    def download_log_chunk(self, params: PipesParams) -> Optional[str]:
+        try:
+            bucket = params.get("bucket") or self.bucket
+            key = params.get("key") or self.key
+
+            if not bucket or not key:
+                return None
+
+            text = self.client.get_object(Bucket=bucket, Key=key)["Body"].read().decode("utf-8")
+            current_position = self.log_position
+            self.log_position += len(text)
+
+            return text[current_position:]
+        except:
+            return None
+
 
 class PipesS3MessageReader(PipesBlobStoreMessageReader):
-    """Message reader that reads messages by periodically reading message chunks from a specified S3
-    bucket.
-
-    If `log_readers` is passed, this reader will also start the passed readers
+    """Message reader that reads messages from S3. Can operate in two modes: reading messages from objects
+    created by py:class:`dagster_pipes.PipesS3MessageWriter`, or reading messages from a specific S3 object
+    (typically a normal log file). If `log_readers` is passed, this reader will also start the passed readers
     when the first message is received from the external process.
+
+    - if `expect_s3_message_writer` is set to `True` (default), a py:class:`dagster_pipes.PipesS3MessageWriter`
+        is expected to be used in the external process. The writer will write messages to a random S3 prefix in chunks,
+        and this reader will read them in order.
+
+    - if `expect_s3_message_writer` is set to `False`, this reader will read messages from a specific S3 object,
+        typically created by an external service (for example, by dumping stdout/stderr containing Pipes messages).
+        The object key can either be passed via corresponding constructor argument,
+        or with `update_params` method (if not known in advance).
 
     Args:
         interval (float): interval in seconds between attempts to download a chunk
         bucket (str): The S3 bucket to read from.
         client (WorkspaceClient): A boto3 client.
-        log_readers (Optional[Sequence[PipesLogReader]]): A set of readers for logs on S3.
+        expect_s3_message_writer (bool): Whether to expect a PipesS3MessageWriter to be used in the external process.
+        key (Optional[str]): The S3 key to read from. If not set, the key must be passed via `update_params`.
+        log_readers (Optional[Mapping[str, PipesLogReader]]): A mapping of arbitrary names to log readers.
     """
 
     def __init__(
         self,
         *,
-        interval: float = 10,
         bucket: str,
-        client: boto3.client,  # pyright: ignore (reportGeneralTypeIssues)
-        log_readers: Optional[Sequence[PipesLogReader]] = None,
+        client=None,
+        expect_s3_message_writer: bool = True,
+        key: Optional[str] = None,
+        interval: float = 10,
+        log_readers: Optional[Mapping[str, "PipesLogReader"]] = None,
     ):
+        if isinstance(log_readers, Sequence):
+            # backcompat conversion for the older Sequence type
+            log_readers = {str(i): lr for i, lr in enumerate(log_readers)}  # type: ignore
+
         super().__init__(
             interval=interval,
             log_readers=log_readers,
         )
         self.bucket = check.str_param(bucket, "bucket")
-        self.client = client
+        self.client: "S3Client" = client or boto3.client("s3")
+        self.expect_s3_message_writer = expect_s3_message_writer
+        self.key = key
+
+        self.offset = 0
+
+        if expect_s3_message_writer and key is not None:
+            raise ValueError("key should not be set if expect_s3_message_writer is True")
+
+    def can_start(self, params: PipesParams) -> bool:
+        if self.expect_s3_message_writer:
+            # we are supposed to be reading from {i}.json chunks created by the MessageWriter
+            return _can_read_from_s3(
+                client=self.client,
+                bucket=params.get("bucket") or self.bucket,
+                key=f"{params['key_prefix']}/1.json",
+            )
+
+        else:
+            key = params.get("key") or self.key
+            return _can_read_from_s3(client=self.client, bucket=self.bucket, key=key)
 
     @contextmanager
     def get_params(self) -> Iterator[PipesParams]:
-        key_prefix = "".join(random.choices(string.ascii_letters, k=30))
-        yield {"bucket": self.bucket, "key_prefix": key_prefix}
+        if self.expect_s3_message_writer:
+            key_prefix = "".join(random.choices(string.ascii_letters, k=30))
+            yield {"bucket": self.bucket, "key_prefix": key_prefix}
+        else:
+            yield {PipesDefaultMessageWriter.STDIO_KEY: PipesDefaultMessageWriter.STDOUT}
 
     def download_messages_chunk(self, index: int, params: PipesParams) -> Optional[str]:
-        key = f"{params['key_prefix']}/{index}.json"
-        try:
-            obj = self.client.get_object(Bucket=self.bucket, Key=key)
-            return obj["Body"].read().decode("utf-8")
-        except ClientError:
-            return None
+        if self.expect_s3_message_writer:
+            try:
+                obj = self.client.get_object(
+                    Bucket=self.bucket, Key=f"{params['key_prefix']}/{index}.json"
+                )
+                return obj["Body"].read().decode("utf-8")
+            except ClientError:
+                return None
+        else:
+            # we will be reading the same S3 object again and again
+            key = params.get("key") or self.key
+            text = (
+                self.client.get_object(Bucket=self.bucket, Key=key)["Body"].read().decode("utf-8")
+            )
+            next_text = text[self.offset :]
+            self.offset = len(text)
+            return next_text
 
     def no_messages_debug_text(self) -> str:
-        return (
-            f"Attempted to read messages from S3 bucket {self.bucket}. Expected"
-            " PipesS3MessageWriter to be explicitly passed to open_dagster_pipes in the external"
-            " process."
-        )
+        if self.expect_s3_message_writer:
+            return f"Attempted to read messages from S3 bucket {self.bucket}. Expected "
+            "PipesS3MessageWriter to be explicitly passed to open_dagster_pipes in the external process."
+        else:
+            message = f"Attempted to read messages from S3 bucket {self.bucket}."
+
+            if self.key is not None:
+                message += f" Expected to read messages from S3 key {self.key}."
+            else:
+                message += (
+                    " The `key` parameter was not set, should be provided via `update_params`."
+                )
+
+            message += " Please check if the object exists and is accessible."
+
+            return message
 
 
 class PipesLambdaLogsMessageReader(PipesMessageReader):
