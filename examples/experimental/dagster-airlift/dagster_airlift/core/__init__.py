@@ -1,3 +1,5 @@
+from dagster_airlift.core.airflow_instance import DagRun as DagRun, TaskInstance as TaskInstance
+
 from ..migration_state import load_migration_state_from_yaml as load_migration_state_from_yaml
 from .airflow_defs_data import AirflowDefinitionsData as AirflowDefinitionsData
 from .basic_auth import BasicAuthBackend as BasicAuthBackend
@@ -12,3 +14,4 @@ from .load_defs import (
     get_resolved_airflow_defs as get_resolved_airflow_defs,
 )
 from .sensor import build_airflow_polling_sensor_defs as build_airflow_polling_sensor_defs
+from .utils import maps_to_dag as maps_to_dag
