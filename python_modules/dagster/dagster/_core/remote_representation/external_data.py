@@ -115,46 +115,57 @@ DEFAULT_PRESET_NAME = "default"
 SYSTEM_METADATA_KEY_ASSET_EXECUTION_TYPE = "dagster/asset_execution_type"
 
 
-@whitelist_for_serdes(storage_field_names={"external_job_datas": "external_pipeline_datas"})
+@whitelist_for_serdes(
+    storage_name="ExternalRepositoryData",
+    storage_field_names={
+        "schedules": "external_schedule_datas",
+        "partition_sets": "external_partition_set_datas",
+        "sensors": "external_sensor_datas",
+        "asset_nodes": "external_asset_graph_data",
+        "resources": "external_resource_data",
+        "asset_check_nodes": "external_asset_checks",
+        "external_job_datas": "external_pipeline_datas",
+    },
+)
 @record_custom
-class ExternalRepositoryData(IHaveNew):
+class RepositorySnap(IHaveNew):
     name: str
-    external_schedule_datas: Sequence["ScheduleSnap"]
-    external_partition_set_datas: Sequence["PartitionSetSnap"]
-    external_sensor_datas: Sequence["SensorSnap"]
-    external_asset_graph_data: Sequence["AssetNodeSnap"]
+    schedules: Sequence["ScheduleSnap"]
+    partition_sets: Sequence["PartitionSetSnap"]
+    sensors: Sequence["SensorSnap"]
+    asset_nodes: Sequence["AssetNodeSnap"]
     external_job_datas: Optional[Sequence["ExternalJobData"]]
     external_job_refs: Optional[Sequence["ExternalJobRef"]]
-    external_resource_data: Optional[Sequence["ResourceSnap"]]
-    external_asset_checks: Optional[Sequence["AssetCheckNodeSnap"]]
+    resources: Optional[Sequence["ResourceSnap"]]
+    asset_check_nodes: Optional[Sequence["AssetCheckNodeSnap"]]
     metadata: Optional[MetadataMapping]
     utilized_env_vars: Optional[Mapping[str, Sequence["EnvVarConsumer"]]]
 
     def __new__(
         cls,
         name: str,
-        external_schedule_datas: Sequence["ScheduleSnap"],
-        external_partition_set_datas: Sequence["PartitionSetSnap"],
-        external_sensor_datas: Optional[Sequence["SensorSnap"]] = None,
-        external_asset_graph_data: Optional[Sequence["AssetNodeSnap"]] = None,
+        schedules: Sequence["ScheduleSnap"],
+        partition_sets: Sequence["PartitionSetSnap"],
+        sensors: Optional[Sequence["SensorSnap"]] = None,
+        asset_nodes: Optional[Sequence["AssetNodeSnap"]] = None,
         external_job_datas: Optional[Sequence["ExternalJobData"]] = None,
         external_job_refs: Optional[Sequence["ExternalJobRef"]] = None,
-        external_resource_data: Optional[Sequence["ResourceSnap"]] = None,
-        external_asset_checks: Optional[Sequence["AssetCheckNodeSnap"]] = None,
+        resources: Optional[Sequence["ResourceSnap"]] = None,
+        asset_check_nodes: Optional[Sequence["AssetCheckNodeSnap"]] = None,
         metadata: Optional[MetadataMapping] = None,
         utilized_env_vars: Optional[Mapping[str, Sequence["EnvVarConsumer"]]] = None,
     ):
         return super().__new__(
             cls,
             name=name,
-            external_schedule_datas=external_schedule_datas,
-            external_partition_set_datas=external_partition_set_datas,
-            external_sensor_datas=external_sensor_datas or [],
-            external_asset_graph_data=external_asset_graph_data or [],
+            schedules=schedules,
+            partition_sets=partition_sets,
+            sensors=sensors or [],
+            asset_nodes=asset_nodes or [],
             external_job_datas=external_job_datas,
             external_job_refs=external_job_refs,
-            external_resource_data=external_resource_data,
-            external_asset_checks=external_asset_checks,
+            resources=resources,
+            asset_check_nodes=asset_check_nodes,
             metadata=metadata or {},
             utilized_env_vars=utilized_env_vars,
         )
@@ -194,38 +205,38 @@ class ExternalRepositoryData(IHaveNew):
 
         check.failed("Could not find external pipeline data named " + name)
 
-    def get_external_schedule_data(self, name):
+    def get_schedule(self, name):
         check.str_param(name, "name")
 
-        for external_schedule_data in self.external_schedule_datas:
-            if external_schedule_data.name == name:
-                return external_schedule_data
+        for schedule in self.schedules:
+            if schedule.name == name:
+                return schedule
 
         check.failed("Could not find external schedule data named " + name)
 
-    def has_external_partition_set_data(self, name) -> bool:
+    def has_partition_set(self, name) -> bool:
         check.str_param(name, "name")
-        for external_partition_set_data in self.external_partition_set_datas:
-            if external_partition_set_data.name == name:
+        for partition_set in self.partition_sets:
+            if partition_set.name == name:
                 return True
 
         return False
 
-    def get_external_partition_set_data(self, name) -> "PartitionSetSnap":
+    def get_partition_set(self, name) -> "PartitionSetSnap":
         check.str_param(name, "name")
 
-        for external_partition_set_data in self.external_partition_set_datas:
-            if external_partition_set_data.name == name:
-                return external_partition_set_data
+        for partition_set in self.partition_sets:
+            if partition_set.name == name:
+                return partition_set
 
         check.failed("Could not find external partition set data named " + name)
 
-    def get_external_sensor_data(self, name):
+    def get_sensor(self, name):
         check.str_param(name, "name")
 
-        for external_sensor_data in self.external_sensor_datas:
-            if external_sensor_data.name == name:
-                return external_sensor_data
+        for sensor in self.sensors:
+            if sensor.name == name:
+                return sensor
 
         check.failed("Could not find sensor data named " + name)
 
@@ -1442,7 +1453,7 @@ def _get_resource_job_usage(job_defs: Sequence[JobDefinition]) -> ResourceJobUsa
 def external_repository_data_from_def(
     repository_def: RepositoryDefinition,
     defer_snapshots: bool = False,
-) -> ExternalRepositoryData:
+) -> RepositorySnap:
     check.inst_param(repository_def, "repository_def", RepositoryDefinition)
 
     jobs = repository_def.get_all_jobs()
@@ -1494,9 +1505,9 @@ def external_repository_data_from_def(
 
     resource_job_usage_map: ResourceJobUsageMap = _get_resource_job_usage(jobs)
 
-    return ExternalRepositoryData(
+    return RepositorySnap(
         name=repository_def.name,
-        external_schedule_datas=sorted(
+        schedules=sorted(
             [
                 ScheduleSnap.from_def(schedule_def, repository_def)
                 for schedule_def in repository_def.schedule_defs
@@ -1506,7 +1517,7 @@ def external_repository_data_from_def(
         # `PartitionSetDefinition` has been deleted, so we now construct `PartitionSetSnap`
         # from jobs instead of going through the intermediary `PartitionSetDefinition`. Eventually
         # we will remove `PartitionSetSnap` as well.
-        external_partition_set_datas=sorted(
+        partition_sets=sorted(
             [
                 PartitionSetSnap.from_job_def(job_def)
                 for job_def in repository_def.get_all_jobs()
@@ -1514,17 +1525,17 @@ def external_repository_data_from_def(
             ],
             key=lambda pss: pss.name,
         ),
-        external_sensor_datas=sorted(
+        sensors=sorted(
             [
                 SensorSnap.from_def(sensor_def, repository_def)
                 for sensor_def in repository_def.sensor_defs
             ],
             key=lambda sd: sd.name,
         ),
-        external_asset_graph_data=asset_node_snaps,
+        asset_nodes=asset_node_snaps,
         external_job_datas=job_datas,
         external_job_refs=job_refs,
-        external_resource_data=sorted(
+        resources=sorted(
             [
                 ResourceSnap.from_def(
                     res_data,
@@ -1540,7 +1551,7 @@ def external_repository_data_from_def(
             ],
             key=lambda rd: rd.name,
         ),
-        external_asset_checks=asset_check_node_snaps_from_repo(repository_def),
+        asset_check_nodes=asset_check_node_snaps_from_repo(repository_def),
         metadata=repository_def.metadata,
         utilized_env_vars={
             env_var: [

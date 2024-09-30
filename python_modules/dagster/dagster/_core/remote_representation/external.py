@@ -48,10 +48,10 @@ from dagster._core.remote_representation.external_data import (
     EnvVarConsumer,
     ExternalJobData,
     ExternalJobRef,
-    ExternalRepositoryData,
     NestedResource,
     PartitionSetSnap,
     PresetSnap,
+    RepositorySnap,
     ResourceJobUsageEntry,
     ResourceSnap,
     ResourceValueSnap,
@@ -126,13 +126,13 @@ class ExternalRepository:
 
     def __init__(
         self,
-        external_repository_data: ExternalRepositoryData,
+        external_repository_data: RepositorySnap,
         repository_handle: RepositoryHandle,
         instance: DagsterInstance,
         ref_to_data_fn: Optional[Callable[[ExternalJobRef], ExternalJobData]] = None,
     ):
         self.external_repository_data = check.inst_param(
-            external_repository_data, "external_repository_data", ExternalRepositoryData
+            external_repository_data, "external_repository_data", RepositorySnap
         )
 
         self._instance = instance
@@ -159,12 +159,12 @@ class ExternalRepository:
         self._handle = check.inst_param(repository_handle, "repository_handle", RepositoryHandle)
 
         self._asset_jobs: Dict[str, List[AssetNodeSnap]] = {}
-        for asset_node in external_repository_data.external_asset_graph_data:
+        for asset_node in external_repository_data.asset_nodes:
             for job_name in asset_node.job_names:
                 self._asset_jobs.setdefault(job_name, []).append(asset_node)
 
         self._asset_check_jobs: Dict[str, List[AssetCheckNodeSnap]] = {}
-        for asset_check_node_snap in external_repository_data.external_asset_checks or []:
+        for asset_check_node_snap in external_repository_data.asset_check_nodes or []:
             for job_name in asset_check_node_snap.job_names:
                 self._asset_check_jobs.setdefault(job_name, []).append(asset_check_node_snap)
 
@@ -181,7 +181,7 @@ class ExternalRepository:
     def _external_schedules(self) -> Dict[str, "ExternalSchedule"]:
         return {
             external_schedule_data.name: ExternalSchedule(external_schedule_data, self._handle)
-            for external_schedule_data in self.external_repository_data.external_schedule_datas
+            for external_schedule_data in self.external_repository_data.schedules
         }
 
     def has_external_schedule(self, schedule_name: str) -> bool:
@@ -198,9 +198,7 @@ class ExternalRepository:
     def _external_resources(self) -> Dict[str, "ExternalResource"]:
         return {
             external_resource_data.name: ExternalResource(external_resource_data, self._handle)
-            for external_resource_data in (
-                self.external_repository_data.external_resource_data or []
-            )
+            for external_resource_data in (self.external_repository_data.resources or [])
         }
 
     def has_external_resource(self, resource_name: str) -> bool:
@@ -227,7 +225,7 @@ class ExternalRepository:
     def _external_sensors(self) -> Dict[str, "ExternalSensor"]:
         sensor_datas = {
             external_sensor_data.name: ExternalSensor(external_sensor_data, self._handle)
-            for external_sensor_data in self.external_repository_data.external_sensor_datas
+            for external_sensor_data in self.external_repository_data.sensors
         }
 
         if self._instance.auto_materialize_use_sensors:
@@ -324,7 +322,7 @@ class ExternalRepository:
             external_partition_set_data.name: ExternalPartitionSet(
                 external_partition_set_data, self._handle
             )
-            for external_partition_set_data in self.external_repository_data.external_partition_set_datas
+            for external_partition_set_data in self.external_repository_data.partition_sets
         }
 
     def has_external_partition_set(self, partition_set_name: str) -> bool:
@@ -403,7 +401,7 @@ class ExternalRepository:
 
     def get_asset_node_snaps(self, job_name: Optional[str] = None) -> Sequence[AssetNodeSnap]:
         return (
-            self.external_repository_data.external_asset_graph_data
+            self.external_repository_data.asset_nodes
             if job_name is None
             else self._asset_jobs.get(job_name, [])
         )
@@ -411,7 +409,7 @@ class ExternalRepository:
     def get_asset_node_snap(self, asset_key: AssetKey) -> Optional[AssetNodeSnap]:
         matching = [
             asset_node
-            for asset_node in self.external_repository_data.external_asset_graph_data
+            for asset_node in self.external_repository_data.asset_nodes
             if asset_node.asset_key == asset_key
         ]
         return matching[0] if matching else None
@@ -422,7 +420,7 @@ class ExternalRepository:
         if job_name:
             return self._asset_check_jobs.get(job_name, [])
         else:
-            return self.external_repository_data.external_asset_checks or []
+            return self.external_repository_data.asset_check_nodes or []
 
     def get_display_metadata(self) -> Mapping[str, str]:
         return self.handle.display_metadata
