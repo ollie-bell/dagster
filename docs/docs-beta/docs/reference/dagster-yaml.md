@@ -35,12 +35,14 @@ compute_logs:
   class: LocalComputeLogManager
   config:
     base_dir: /path/to/compute/logs
-  # Can use S3, GCS, or Azure Blob Storage for compute logs, e.g.
-  # module: dagster_aws.s3.compute_log_manager
-  # class: S3ComputeLogManager
-  # config:
-  #   bucket: "mycorp-dagster-compute-logs"
-  #   prefix: "dagster-test-"
+    
+# Alternatively, logs can be written to cloud storage providers like S3, GCS, and Azure blog storage. For example:
+# compute_logs:
+#   module: dagster_aws.s3.compute_log_manager
+#   class: S3ComputeLogManager
+#   config:
+#     bucket: "mycorp-dagster-compute-logs"
+#    prefix: "dagster-test-"
 
 storage:
   sqlite:
